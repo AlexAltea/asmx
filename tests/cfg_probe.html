@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>CFG: running...</title>
+    <script src="https://cdn.jsdelivr.net/npm/@alexaltea/capstone-js@5.0.9/dist/capstone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@alexaltea/keystone-js@0.9.2/dist/keystone.js"></script>
+  </head>
+  <body>
+    <pre id="result">running...</pre>
+    <script type="module">
+      import { Disassembler } from "../src/core/disassembler.js";
+      import { Assembler } from "../src/core/assembler.js";
+      import { getArch } from "../src/arch/index.js";
+
+      const out = [];
+      let pass = 0,
+        fail = 0;
+      const ok = (c, m) => (c ? (pass++, out.push("✓ " + m)) : (fail++, out.push("✗ " + m)));
+      function finish() {
+        const line = `CFG: ${pass} pass ${fail} fail` + (fail ? " FAILED" : " OK");
+        document.title = line;
+        document.getElementById("result").textContent = line + "\n" + out.join("\n");
+        try {
+          fetch("/report", { method: "POST", body: line + "\n" + out.join("\n") });
+        } catch {}
+      }
+
+      (async () => {
+        try {
+          const ks = await MKeystone();
+          const cs = await MCapstone();
+          const profile = getArch("x86");
+          const asm = new Assembler(ks);
+          asm.configure({ ksArch: "ARCH_X86", ksMode: ["MODE_64"] });
+          const dis = new Disassembler(cs);
+          dis.configure({ csArch: "ARCH_X86", csMode: ["MODE_64"], branchInfo: profile.branchInfo });
+          ok(dis.hasDetail, "capstone detail on");
+
+          // Build a small program with a call, a conditional jump and a ret.
+          //   call f ; jmp end ; f: ret ; end: nop
+          const prog = ["start:", "call f", "je end", "f:", "ret", "end:", "nop"].join("\n");
+          // assemble per-line is label-unaware, so hand-assemble known bytes at 0x1000:
+          //  e8 06 00 00 00   call +6 -> 0x100b
+          //  74 06            je  +6   -> 0x1013  (rel from next)
+          //  c3               ret
+          //  90               nop
+          const bytes = [0xe8, 0x06, 0x00, 0x00, 0x00, 0x74, 0x06, 0xc3, 0x90];
+          const info = dis.analyze(bytes, 0x1000);
+
+          const call = info.find((i) => i.mnemonic === "call");
+          const je = info.find((i) => i.mnemonic === "je");
+          const ret = info.find((i) => i.mnemonic === "ret");
+          ok(!!call && call.isCall, "call classified as isCall");
+          ok(!!ret && ret.isRet, "ret classified as isRet");
+          ok(!!je && je.isJump && je.isCond, "je classified as conditional jump");
+          ok(call && call.target === 0x100bn, "call target resolved (0x100b, got 0x" + call?.target?.toString(16) + ")");
+          ok(je && je.target != null, "je has a target (0x" + je?.target?.toString(16) + ")");
+
+          // loop is a (conditional) branch on x86
+          const loopInfo = dis.analyze([0xe2, 0xfb], 0x2000); // loop 0x1ffd
+          ok(loopInfo[0] && loopInfo[0].isJump, "loop classified as a jump/branch");
+
+          // Raw structure dump (for debugging if asserts fail).
+          const raw = dis.disasm([0xe8, 0x06, 0x00, 0x00, 0x00], 0x1000)[0];
+          out.push("raw call keys: " + Object.keys(raw).join(","));
+          out.push("raw groups: " + JSON.stringify(raw.detail && raw.detail.groups));
+          out.push("raw op_str: " + raw.op_str);
+          const ops = raw.detail && (raw.detail.operands || (raw.detail.x86 && raw.detail.x86.operands));
+          out.push("raw operands: " + JSON.stringify(ops));
+
+          finish();
+        } catch (e) {
+          out.push("EXCEPTION: " + (e && e.stack ? e.stack : e));
+          fail++;
+          finish();
+        }
+      })();
+    </script>
+  </body>
+</html>

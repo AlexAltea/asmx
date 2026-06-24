@@ -1,0 +1,82 @@
+/*
+ * Design tokens. Single source of truth for color, type, spacing.
+ * Dark is the default; [data-theme="light"] on <html> swaps color-scheme below.
+ */
+:root {
+  color-scheme: dark; /* default until [data-theme] resolves; also feeds light-dark() */
+
+  /* Type */
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code",
+    "Fira Code", Consolas, "Liberation Mono", monospace;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-1: 11px;
+  --fs-2: 12px;
+  --fs-3: 13px;
+  --fs-4: 15px;
+  --lh-row: 22px; /* disassembly row; mirrored by DISASM_ROW_H in ui/geometry.js */
+  --lh-hex-row: 18px; /* memory/stack row; mirrored by HEX_ROW_H in ui/geometry.js */
+
+  /* Spacing */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --radius: 6px;
+  --radius-sm: 4px;
+
+  /* Accent (amber = IP / focus) */
+  --accent: light-dark(#d8821a, #ffb454);
+  --accent-dim: light-dark(#b06a12, #b9823b);
+  --accent-bg: light-dark(rgba(216, 130, 26, 0.14), rgba(255, 180, 84, 0.14));
+  --on-accent: #14171c; /* dark ink legible on the amber fill, both themes (.btn.primary, checkbox tick) */
+  /* Theme-invariant accent (the dark-theme amber): the Run button keeps the exact
+     same fill in light mode instead of following the light accent. */
+  --accent-btn: #ffb454;
+  --accent-btn-dim: #b9823b;
+  /* Theme-invariant blue: the Share button's fill (same treatment as --accent-btn). */
+  --blue-btn: #7cc7ff;
+  --blue-btn-dim: #5a91b9;
+
+  /* Semantic colors (shared across themes) */
+  --ok: #7ec46b;
+  --warn: #e8c479;
+  --err: #ff6e6e;
+
+  /* Syntax */
+  --syn-mnem: light-dark(#1f6fc4, #7cc7ff);
+  --syn-reg: light-dark(#b3641a, #ffb454);
+  --syn-imm: light-dark(#7b3fd1, #c39bff);
+  --syn-label: light-dark(#2f8f3f, #7ec46b);
+  --syn-comment: light-dark(#8a93a3, #6c7686);
+  --syn-punct: light-dark(#5a6373, #9aa4b2);
+
+  /* Surfaces */
+  --bg-0: light-dark(#f3f5f8, #14171c); /* app background */
+  --bg-1: light-dark(#ffffff, #1a1e24); /* panels */
+  --bg-2: light-dark(#f0f2f6, #20252d); /* raised rows / inputs */
+  --bg-3: light-dark(#e4e8ef, #2a313b); /* hover */
+  --bg-toolbar: light-dark(#e9edf3, #11141a);
+  --border: light-dark(#d8dee7, #2c333d);
+  --border-strong: light-dark(#c2cad6, #3a4350);
+
+  /* Text */
+  --fg-0: light-dark(#1c2330, #e6e9ee); /* primary text */
+  --fg-1: light-dark(#4a5568, #aeb6c2); /* secondary */
+  --fg-dim: light-dark(#aab2c0, #5c6675); /* dimmed (padding zeros) */
+  --fg-mute: light-dark(#cbd2dc, #3c4350); /* fainter still: decoded zero-padding tail in the listing */
+
+  /* Row tints + change highlight */
+  --row-ip: light-dark(rgba(255, 160, 40, 0.18), rgba(255, 180, 84, 0.12));
+  --row-bp: light-dark(rgba(220, 60, 60, 0.1), rgba(255, 110, 110, 0.1));
+  --changed: light-dark(#c06a10, #ffb454);
+  --scroll-thumb: light-dark(#c2cad6, #39414d);
+
+  /* Elevation (shadows/scrim, shared across themes) */
+  --shadow-1: 0 6px 24px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 12px 40px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(0, 0, 0, 0.5);
+}
+
+/* Theme = color-scheme, which selects the light-dark() branch above. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }

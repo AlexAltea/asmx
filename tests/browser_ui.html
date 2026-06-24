@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>UI: running...</title>
+    <link rel="stylesheet" href="../src/styles/tokens.css" />
+    <link rel="stylesheet" href="../src/styles/app.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@alexaltea/keystone-js@0.9.2/dist/keystone.js"></script>
+  </head>
+  <body>
+    <pre id="result">running...</pre>
+    <div id="editor" class="editor"></div>
+    <div id="registers"></div>
+    <div id="inspector"></div>
+    <script type="module">
+      import { Document } from "../src/model/document.js";
+      import { Assembler } from "../src/core/assembler.js";
+      import { getArch } from "../src/arch/index.js";
+      import { BreakpointStore } from "../src/debug/breakpoints.js";
+      import { Editor } from "../src/ui/editor.js";
+      import { ArrowGutter } from "../src/ui/arrows.js";
+      import { Registers } from "../src/ui/registers.js";
+      import { Inspector } from "../src/ui/inspector.js";
+      import { MemoryView } from "../src/ui/memory.js";
+      import { StackView } from "../src/ui/stack.js";
+      import { bigToBytes } from "../src/core/bigint.js";
+
+      const out = [];
+      let pass = 0,
+        fail = 0;
+      const ok = (c, m) => (c ? (pass++, out.push("✓ " + m)) : (fail++, out.push("✗ " + m)));
+      function finish() {
+        const line = `UI: ${pass} pass ${fail} fail` + (fail ? " FAILED" : " OK");
+        document.title = line;
+        document.getElementById("result").textContent = line + "\n" + out.join("\n");
+        try {
+          fetch("/report", { method: "POST", body: line + "\n" + out.join("\n") });
+        } catch {}
+      }
+
+      (async () => {
+        try {
+          const ks = await MKeystone();
+          const asm = new Assembler(ks);
+          asm.configure({ ksArch: "ARCH_X86", ksMode: ["MODE_64"] });
+          const profile = getArch("x86");
+
+          // ---- Editor rendering ----
+          const doc = new Document({ base: profile.codeBase, assemble: (t) => asm.asm(t) });
+          doc.setLines(["mov rax, 0x1122334455667788", "mov rbx, 0xff", "add rax, rbx"].join("\n"));
+          doc.setIPFromAddr(doc.entryAddr());
+          const bps = new BreakpointStore(doc);
+          const editor = new Editor(document.getElementById("editor"), { doc, breakpoints: bps });
+          editor.render();
+          const rows = document.querySelectorAll("#editor .ed-row");
+          ok(rows.length === 3, "editor rendered 3 rows");
+          ok(rows[0].classList.contains("ip"), "first row marked as IP");
+          ok(document.querySelector("#editor .c-bytes .zero") !== null, "bytes column dims padding zeros");
+          ok(document.querySelector("#editor .c-addr .zero") !== null, "address column dims leading zeros");
+          ok(document.querySelector("#editor .c-asm .t-mnem") !== null, "asm column syntax-highlights the mnemonic");
+
+          // dim zeros must be copy-safe: textContent still has the full hex.
+          // Pick the row that actually has 00 padding bytes (mov rbx, 0xff).
+          const bytesCell = [...document.querySelectorAll("#editor .c-bytes")].find((c) =>
+            c.textContent.includes("00")
+          );
+          const bytesText = bytesCell.textContent.replace(/\s/g, "");
+          ok(/^[0-9A-F]+$/.test(bytesText) && bytesText.includes("00"), "dimmed zeros remain real (copy-safe) text");
+
+          // ---- breakpoint toggle ----
+          bps.toggle(doc.lines[1].addr);
+          ok(document.querySelectorAll("#editor .ed-row")[1].classList.contains("bp-row"), "breakpoint toggles row class");
+          ok(bps.active().length === 1, "store resolves 1 active breakpoint");
+
+          // ---- sticky IP through a UI delete ----
+          doc.setIPFromAddr(doc.lines[1].addr);
+          const keepId = doc.lines[2].id;
+          doc.remove(doc.lines[1].id);
+          ok(doc.ipLineId === keepId, "deleting IP line moves IP to the neighbor");
+
+          // ---- Registers + flags ----
+          const regs = new Registers(document.getElementById("registers"), {});
+          regs.setMode(profile, "64");
+          const snap = (name, val, size = 8) => ({ name, size, bytes: bigToBytes(val, size) });
+          regs.update([
+            snap("RAX", 0x1122334455667788n),
+            snap("RBX", 0n),
+            snap("EFLAGS", 0b0000_0100_0101n /* CF+PF+ZF set: bits 0,2,6 */),
+          ]);
+          const raxVal = document.querySelector("#registers .reg-row .reg-val");
+          ok(/1122334455667788/.test(raxVal.textContent), "register value shows 64-bit hex");
+          ok(document.querySelector("#registers .flags-strip") !== null, "flags strip rendered");
+          const litFlags = [...document.querySelectorAll("#registers .flag-chip.on")].map((c) => c.textContent);
+          ok(litFlags.includes("CF") && litFlags.includes("ZF"), "flags decoder lights CF & ZF");
+          // changed highlight on second update
+          regs.update([snap("RAX", 0x1122334455667789n)]);
+          ok([...document.querySelectorAll("#registers .reg-row")].some((r) => r.classList.contains("changed")),
+             "changed register gets the 'changed' class");
+
+          // ---- Inspector hover type-preview ----
+          const insp = new Inspector(document.getElementById("inspector"));
+          // pi as f64, little-endian
+          insp.show({ label: "rax", bytes: bigToBytes(0x400921fb54442d18n, 8), size: 8 });
+          const itext = document.getElementById("inspector").textContent;
+          ok(/u8/.test(itext) && /i64/.test(itext) && /f64/.test(itext), "inspector lists u8...i64 and f64 rows");
+          ok(/3\.14159/.test(itext), "inspector decodes f64 ≈ 3.14159 (got pi bits)");
+
+          // ---- Jump-arrow gutter (lane packing + SVG) ----
+          // (an earlier assertion deleted a line; rebuild a 3-line program)
+          doc.setLines(["mov rax, 1", "mov rbx, 2", "add rax, rbx"].join("\n"));
+          doc.setIPFromAddr(doc.entryAddr());
+          const ag = new ArrowGutter();
+          const L = doc.lines; // 3 instruction lines
+          // two overlapping edges: line0->line2 (cond, fwd) and line2->line0 (back)
+          const analysis = [
+            { address: L[0].addr, size: L[0].size, isJump: true, isCall: false, isCond: true, target: L[2].addr },
+            { address: L[2].addr, size: L[2].size, isJump: true, isCall: false, isCond: false, target: L[0].addr },
+          ];
+          ag.update(doc, analysis, L[0].id);
+          ok(ag.svg && ag.svg.querySelectorAll("path.arrow").length === 2, "arrows: 2 paths rendered");
+          ok([...ag.svg.querySelectorAll("path")].some((p) => p.classList.contains("cond")), "arrows: conditional edge dashed");
+          ok([...ag.svg.querySelectorAll("path")].some((p) => p.classList.contains("back")), "arrows: back-edge (loop) detected");
+          ok(ag.width >= 20, "arrows: two overlapping edges allocate ≥2 lanes (width " + ag.width + ")");
+          const active = [...ag.svg.querySelectorAll("path.active")];
+          ok(active.length === 1 && +active[0].dataset.src === L[0].id, "arrows: IP-sourced edge highlighted active");
+          // off-listing target produces no arc
+          const ag2 = new ArrowGutter();
+          ag2.update(doc, [{ address: L[0].addr, size: L[0].size, isJump: true, isCond: false, target: 0xdead0000n }], null);
+          ok(ag2.svg === null, "arrows: off-listing target draws no arc");
+
+          // ---- SIMD lane view (XMM = 16 bytes) ----
+          const xmm = new Uint8Array(16);
+          for (let i = 0; i < 16; i++) xmm[i] = i + 1;
+          insp.show({ label: "xmm0", bytes: xmm, size: 16 });
+          const xtext = document.getElementById("inspector").textContent;
+          ok(/u32×4/.test(xtext) && /f64×2/.test(xtext), "inspector shows SIMD lanes (u32×4, f64×2) for 16-byte regs");
+
+          // ---- Memory view render ----
+          const memEl = document.createElement("div");
+          memEl.className = "hex";
+          document.body.appendChild(memEl);
+          const mem = new MemoryView(memEl, { engine: null });
+          const mbytes = new Uint8Array(16 * 12);
+          mbytes[0] = 0x48;
+          mem.onData(0x10000n, mbytes);
+          ok(memEl.querySelectorAll(".mb").length === 16 * 12, "memory view renders editable byte cells");
+          ok(memEl.querySelector(".hex-row .addr .zero") !== null, "memory addresses dim leading zeros");
+
+          // ---- Stack view render (SP marker + return-address annotation) ----
+          const stkEl = document.createElement("div");
+          stkEl.className = "hex";
+          document.body.appendChild(stkEl);
+          const stk = new StackView(stkEl, { engine: null });
+          stk.setMode(profile, "64");
+          stk.sp = 0x78000n;
+          const sbytes = new Uint8Array(16 * 8);
+          // put a code-range pointer (0x1000A) in the first word -> "ret" annotation
+          sbytes.set(bigToBytes(0x1000an, 8), 0);
+          stk.onData(0x78000n, sbytes);
+          ok(stkEl.querySelector(".hex-row.sp") !== null, "stack marks the SP row");
+          ok(/→ ret/.test(stkEl.textContent), "stack annotates a code pointer as a return address");
+
+          finish();
+        } catch (e) {
+          out.push("EXCEPTION: " + (e && e.stack ? e.stack : e));
+          fail++;
+          finish();
+        }
+      })();
+    </script>
+  </body>
+</html>

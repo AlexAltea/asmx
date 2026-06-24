@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASMX</title>
+
+    <!-- Google Analytics (gtag.js) with Consent Mode -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-S351RKV68Q"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() { dataLayer.push(arguments); }
+      var granted = localStorage.getItem('asmx-consent') === 'granted';
+      gtag('consent', 'default', { analytics_storage: granted ? 'granted' : 'denied' });
+      gtag('js', new Date());
+      gtag('config', 'G-S351RKV68Q');
+    </script>
+
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="stylesheet" href="build/app.css" />
+  </head>
+
+  <body>
+    <div id="app">
+      <header class="area-header">
+        <span class="brand"><span class="logo"><i data-icon="logo"></i></span> ASMX</span>
+        <button class="btn" id="arch-btn" title="Architecture / mode"><span id="arch-label"></span><i data-icon="chevron-down"></i></button>
+        <span class="sep"></span>
+        <div class="btn-group">
+          <button class="btn primary blue" id="btn-share" title="Share a link (memory + registers)"><i data-icon="share"></i> Share</button>
+          <button class="btn icon-only" id="btn-new" title="New session"><i data-icon="file-plus"></i></button>
+          <button class="btn icon-only" id="example-btn" title="Load examples"><i data-icon="book"></i></button>
+          <button class="btn icon-only" id="btn-open" title="Load binary"><i data-icon="folder"></i></button>
+          <button class="btn icon-only" id="btn-save" title="Save binary"><i data-icon="download"></i></button>
+        </div>
+        <input id="file-elf" type="file" accept=".elf,.bin,application/octet-stream" hidden />
+        <span class="sep"></span>
+        <div class="btn-group">
+          <button class="btn primary" id="btn-run" title="Run (F5)"><i data-icon="debug-start"></i> Run</button>
+          <button class="btn icon-only" id="btn-stepin" title="Step into (F11)"><i data-icon="debug-step-into"></i></button>
+          <button class="btn icon-only" id="btn-stepover" title="Step over (F10)"><i data-icon="debug-step-over"></i></button>
+          <button class="btn icon-only" id="btn-stepout" title="Step out (Shift+F11)"><i data-icon="debug-step-out"></i></button>
+          <button class="btn icon-only" id="btn-reset" title="Reset"><i data-icon="debug-restart"></i></button>
+        </div>
+        <span class="grow"></span>
+        <button class="btn" id="btn-add-panel" title="Add a panel to the layout"><i data-icon="layout"></i> Panels</button>
+        <button class="btn icon-only" id="btn-theme" title="Toggle theme"><span class="theme-ico theme-sun"><i data-icon="sun"></i></span><span class="theme-ico theme-moon"><i data-icon="moon"></i></span></button>
+        <span class="sep"></span>
+        <button class="btn icon-only" id="btn-about" title="About ASMX"><i data-icon="info"></i></button>
+      </header>
+
+      <!-- Docking layout root: the engine (ui/layout.js) tiles the panel
+           sources below into rows / columns / tab stacks here. -->
+      <div id="layout-root"></div>
+    </div>
+
+    <!-- Panel sources. Each `.panel-content` (toolbar + body, with the ids the
+         views bind to) is detached at boot and reparented into the docking
+         layout. `data-panel` is the layout id; `data-title` the tab label. -->
+    <div id="panels-src" hidden>
+      <div class="panel-content" data-panel="editor" data-title="Disassembly">
+        <div class="panel-toolbar">
+          <input class="select goto" id="ed-goto" placeholder="goto 0x..." />
+          <button class="btn icon-only" id="ed-ip" title="Go to instruction pointer (IP)"><i data-icon="ip"></i></button>
+          <button class="btn" id="btn-addline" title="Append a line"><i data-icon="add"></i> line</button>
+          <span class="grow"></span>
+          <button class="btn icon-only" id="ed-split" title="Split mnemonic / operands into separate columns"><i data-icon="split-horizontal"></i></button>
+          <button class="btn icon-only" id="ed-view" title="View options"><i data-icon="gear"></i></button>
+        </div>
+        <div class="panel-body" id="editor" tabindex="0"></div>
+      </div>
+
+      <div class="panel-content" data-panel="registers" data-title="Registers">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="reg-filter" placeholder="register" />
+            <button class="btn icon-only" id="reg-filter-btn" title="Filter registers"><i data-icon="filter"></i></button>
+          </div>
+          <span class="grow"></span>
+          <button class="btn icon-only" id="reg-reset" title="Reset registers (clear all; IP to entry, SP to stack top)"><i data-icon="debug-restart"></i></button>
+        </div>
+        <div class="panel-body" id="registers"></div>
+      </div>
+
+      <div class="panel-content" data-panel="inspector" data-title="Inspector">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="inspect-expr" placeholder="expression" />
+            <button class="btn icon-only" id="btn-pin" title="Pin / unpin"><i data-icon="pin"></i></button>
+          </div>
+        </div>
+        <div class="panel-body" id="inspector"></div>
+      </div>
+
+      <div class="panel-content" data-panel="console" data-title="Console">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="con-filter" placeholder="filter" />
+            <button class="btn icon-only" id="con-filter-btn" title="Filter log"><i data-icon="filter"></i></button>
+          </div>
+          <span class="grow"></span>
+          <button class="btn icon-only" id="con-copy" title="Copy logs"><i data-icon="copy"></i></button>
+          <button class="btn icon-only" id="con-clear" title="Clear logs"><i data-icon="trash"></i></button>
+          <button class="btn icon-only" id="con-download" title="Download logs"><i data-icon="download"></i></button>
+        </div>
+        <div class="panel-body console" id="console"></div>
+      </div>
+
+      <div class="panel-content" data-panel="memory" data-title="Memory">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="mem-goto" placeholder="expression" />
+            <button class="btn icon-only" id="mem-pin" title="Pin: follow this expression on every stop"><i data-icon="pin"></i></button>
+          </div>
+        </div>
+        <div class="panel-body" id="memory"></div>
+      </div>
+
+      <div class="panel-content" data-panel="stack" data-title="Stack">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="stack-goto" placeholder="expression" />
+            <button class="btn icon-only" id="stack-pin" title="Pin: follow this expression on every stop"><i data-icon="pin"></i></button>
+          </div>
+          <button class="btn icon-only" id="stack-sp" title="Go to stack pointer (SP)"><i data-icon="sp"></i></button>
+        </div>
+        <div class="panel-body" id="stack"></div>
+      </div>
+
+      <div class="panel-content" data-panel="breakpoints" data-title="Breakpoints">
+        <div class="panel-toolbar">
+          <div class="input-group">
+            <input class="select goto" id="bp-add-expr" placeholder="address" />
+            <button class="btn icon-only" id="bp-add" title="Add a breakpoint at this address"><i data-icon="add"></i></button>
+          </div>
+          <span class="grow"></span>
+          <button class="btn" id="bp-clear" title="Remove all breakpoints"><i data-icon="trash"></i> clear</button>
+        </div>
+        <div class="panel-body" id="breakpoints"></div>
+      </div>
+
+      <div class="panel-content" data-panel="maps" data-title="Memory Maps">
+        <div class="panel-toolbar">
+          <button class="btn" id="map-new" title="Map a new region"><i data-icon="add"></i> new</button>
+          <button class="btn" id="map-del" title="Unmap selected region(s)"><i data-icon="trash"></i> delete</button>
+        </div>
+        <div class="panel-body" id="maps"></div>
+      </div>
+    </div>
+
+    <div class="toast-wrap" id="toasts"></div>
+
+    <!-- About popup (hidden until the header info button is clicked). -->
+    <div class="modal-overlay" id="about-modal" hidden>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-label="About ASMX">
+        <button class="modal-close" id="about-close" title="Close" aria-label="Close"><i data-icon="close"></i></button>
+        <div class="about-logo"><i data-icon="logo"></i></div>
+        <div class="about-name">ASMX</div>
+        <p class="about-desc">Multi-architecture assembly execution playground for web browsers.</p>
+        <a class="about-link" href="https://github.com/AlexAltea/asmx" target="_blank" rel="noopener">github.com/AlexAltea/asmx</a>
+      </div>
+    </div>
+
+    <script type="module" src="build/app.js"></script>
+  </body>
+</html>

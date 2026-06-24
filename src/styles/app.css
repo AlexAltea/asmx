@@ -1,0 +1,1342 @@
+/* App shell + components. Vanilla, token-driven. */
+
+html {
+  box-sizing: border-box;
+}
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+  margin: 0;
+  padding: 0;
+}
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  background: var(--bg-0);
+  color: var(--fg-0);
+  font-family: var(--font-ui);
+  font-size: var(--fs-3);
+  -webkit-font-smoothing: antialiased;
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* Micro-labels: the shared small-caps treatment for tabs, the drag ghost,
+   register-section headers, column headers and popover titles. */
+.lm-tab,
+.lm-ghost,
+.reg-group > summary,
+.col-head,
+.popover-title {
+  font-size: var(--fs-1);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Optical vertical centering for hex-dominant data rows via CSS Text Box trimming */
+.reg-name,
+.reg-val,
+.hex-row .addr,
+.hex-row .ascii,
+.hex-row .mbytes,
+.hex-row > .mono,
+.map-range,
+.map-size,
+.map-label {
+  text-box-trim: trim-both;
+  text-box-edge: cap alphabetic;
+}
+
+/* ---- App shell --------------------------------------------------------- */
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+/* The docking layout fills everything below the header (see ui/layout.js).
+   position:relative anchors the absolute drop indicator during a tab drag. */
+#layout-root {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
+/* ---- Docking layout ---------------------------------------------------- */
+/* Boxes split space along one axis; each child's flex weight = its `size`. */
+.lm-box { display: flex; min-width: 0; min-height: 0; }
+.lm-row { flex-direction: row; }
+.lm-col { flex-direction: column; }
+.lm-box > * { min-width: 0; min-height: 0; }
+
+/* Splitter handles between siblings (drag to re-weight the two neighbours).
+   The visible line is a 1px hairline; ::before widens the grab target a few px
+   on either side so the hairline stays easy to catch without looking heavy. */
+.lm-split { flex: 0 0 1px; background: var(--border); position: relative; z-index: 5; }
+.lm-split::before { content: ""; position: absolute; inset: -3px; }
+.lm-split:hover,
+.lm-split.dragging { background: var(--accent-dim); }
+.lm-split-v { cursor: col-resize; }
+.lm-split-h { cursor: row-resize; }
+
+/* A tab stack: tab strip over the active panel's body. */
+.lm-stack {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-1);
+  overflow: hidden;
+}
+.lm-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  flex: 0 0 auto;
+  background: var(--bg-toolbar);
+  user-select: none;
+  overflow: hidden;
+}
+.lm-tab {
+  display: flex;
+  align-items: center;
+  /* 8px visual inset on both sides and an 8px gap between title and close box.
+     The ✕ box carries 4px of padding around its glyph, so the gap and the right
+     inset are 4px each. */
+  gap: var(--sp-1);
+  max-width: 200px;
+  padding: 0 var(--sp-1) 0 var(--sp-2);
+  /* The strip's bottom divider rides the tabs (not the container) so the active
+     tab can drop its own slice and merge into the toolbar. The top rule is
+     reserved transparent on every tab so all labels share one vertical centre. */
+  border-top: 1px solid transparent;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  line-height: 1; /* trim the leading so the label centres inside the strip */
+  color: var(--fg-1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lm-tab:hover { background: var(--bg-2); color: var(--fg-0); }
+/* Active tab: the accent rides the top BORDER (outside the content box, so the
+   label stays centred). With a toolbar below, it also drops its bottom rule so the
+   tab and toolbar read as one element: shared bg, no divider between them. */
+.lm-tab.active { background: var(--bg-1); color: var(--fg-0); border-top-color: var(--accent); }
+.lm-tabs.with-toolbar .lm-tab.active { border-bottom-color: transparent; }
+.lm-tab-title { overflow: hidden; text-overflow: ellipsis; }
+/* Square, flex-centred box holding the 16x16 close codicon (centred by the flex,
+   not by font metrics, so the ✕ is dead-centre both ways). 24x24 = the glyph
+   plus 4px of clearance on every side. */
+.lm-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  border-radius: 3px;
+}
+/* The ✕ is always visible (fg-dim on an unselected tab), brightening on the active
+   or hovered tab, up to full fg-0 white when the ✕ itself is hovered (its :hover rule
+   comes last so it out-specifies the tab-level rules the ✕ also matches). */
+.lm-tab:hover .lm-tab-close,
+.lm-tab.active .lm-tab-close { color: var(--fg-1); }
+.lm-tab .lm-tab-close:hover { background: var(--bg-3); color: var(--fg-0); }
+.lm-tabs-sp { flex: 1 1 auto; border-bottom: 1px solid var(--border); }
+.lm-add {
+  flex: 0 0 auto;
+  width: 26px;
+  border: none;
+  border-bottom: 1px solid var(--border); /* continue the strip divider to the edge */
+  background: transparent;
+  color: var(--fg-1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lm-add:hover { background: var(--bg-2); color: var(--fg-0); }
+.lm-body { flex: 1 1 auto; min-height: 0; position: relative; display: flex; }
+
+/* Floating tab being dragged + the drop-zone preview overlay. */
+.lm-ghost {
+  position: fixed;
+  z-index: 300;
+  pointer-events: none;
+  padding: 3px 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--fg-0);
+  box-shadow: var(--shadow-1);
+}
+.lm-drop {
+  position: absolute;
+  z-index: 250;
+  pointer-events: none;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+}
+.lm-empty { flex: 1; display: flex; align-items: center; justify-content: center; }
+
+/* ---- Panels ------------------------------------------------------------ */
+/* A panel's movable content: an optional toolbar over the scrolling body,
+   reparented between tab stacks by the layout (the stack draws the frame). */
+.panel-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+/* Optional secondary toolbar row a panel can opt into (above the body).
+   Hosts per-panel controls: the goto/expression fields, the pin, IP/SP, and the
+   map tools. align-items:center vertically centers every control in the row. */
+.panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1); /* tight, uniform spacing between every control in the row */
+  padding: 3px; /* equal inset on all four sides so controls sit equidistant from every edge */
+  background: var(--bg-1); /* same as the active tab / panel body */
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.panel-toolbar .grow { flex: 1; }
+/* Compact toolbar buttons (IP / SP / new / delete / pin): a clear raised box so
+   each reads as a button, set apart from the toolbar strip behind it. */
+.panel-toolbar .btn {
+  height: 22px;
+  min-width: 22px;
+  padding: 0 var(--sp-1); /* tight side padding, matched to the ~4px above/below the text */
+  gap: var(--sp-1); /* icon/label gap, tighter than the header's 6px */
+  font-size: var(--fs-1);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.panel-toolbar .btn:hover:not(:disabled) { background: var(--bg-3); color: var(--fg-0); border-color: var(--border-strong); }
+/* Pressed: darker fill (placed after :hover so it wins while both are active). */
+.panel-toolbar .btn:active:not(:disabled) { background: var(--bg-0); color: var(--fg-0); border-color: var(--border-strong); }
+.panel-toolbar .btn.icon-only { width: 22px; min-width: 22px; padding: 0; } /* square: 3px around the 16px icon, matching the row height */
+.panel-toolbar .btn .ico { opacity: 0.85; }
+.panel-toolbar .btn:hover:not(:disabled) .ico { opacity: 1; }
+
+/* Input group: an expression field with its pin button welded to the right edge
+   (Bootstrap-style): they share one 1px border and only the outer corners round,
+   so the pin always sits immediately beside its field (Memory / Stack / Inspector). */
+.panel-toolbar .input-group { display: inline-flex; align-items: center; }
+.panel-toolbar .input-group .select.goto {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.panel-toolbar .input-group .btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px; /* collapse the doubled 1px border into one shared edge */
+}
+.panel-toolbar .input-group .btn:hover:not(:disabled) { z-index: 1; }
+/* On focus the field's accent ring covers all four sides: its right border is
+   otherwise painted over by the welded pin button (a later, overlapping sibling),
+   so lift the focused field above it. */
+.panel-toolbar .input-group .select.goto:focus { position: relative; z-index: 2; }
+.panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Native scrollbars (Registers / Console / Inspector / Breakpoints / Maps), styled
+   to read like the hand-built .vbar in Memory/Stack: a rounded --bg-2 trough
+   carrying an 8px --scroll-thumb thumb (a 1px transparent inset each side shows the
+   trough through the gap, exactly like .vbar-thumb) that brightens to
+   --border-strong on hover. 10px channel = the .vbar's width. */
+.panel-body::-webkit-scrollbar,
+.col-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.panel-body::-webkit-scrollbar-track,
+.col-scroll::-webkit-scrollbar-track { background: var(--bg-2); border-radius: var(--radius); }
+.panel-body::-webkit-scrollbar-thumb,
+.col-scroll::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+.panel-body::-webkit-scrollbar-thumb:hover,
+.col-scroll::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+/* Where a vertical and horizontal bar meet: blend the junction into the same trough
+   instead of the browser's default filled square. */
+.panel-body::-webkit-scrollbar-corner,
+.col-scroll::-webkit-scrollbar-corner { background: var(--bg-2); }
+
+/* ---- Header / toolbar -------------------------------------------------- */
+.area-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: 44px;
+  flex: 0 0 auto; /* fixed bar; the docking layout below takes the rest */
+  padding: 0 var(--sp-2);
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin-right: var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.brand .logo { color: var(--accent); }
+.brand .logo .ico { display: block; width: 20px; height: 20px; }
+.sep { width: 1px; height: 22px; background: var(--border-strong); margin: 0 var(--sp-1); }
+.grow { flex: 1; }
+
+.select,
+.btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-2);
+  color: var(--fg-0);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  height: 28px;
+  padding: 0 var(--sp-2);
+  cursor: pointer;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 28px;
+  justify-content: center;
+  user-select: none; /* a button's label (SP / IP / new / delete ...) isn't selectable text */
+}
+.btn:hover:not(:disabled) { background: var(--bg-3); }
+/* Pressed feedback is a colour shift (a darker fill), not a 1px nudge. */
+.btn:active:not(:disabled) { background: var(--bg-1); border-color: var(--border-strong); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn.primary { color: var(--on-accent); background: var(--accent-btn); border-color: var(--accent-btn); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-btn-dim); }
+.btn.primary:active:not(:disabled) { background: var(--accent-btn-dim); border-color: var(--accent-btn-dim); filter: brightness(0.92); }
+.btn.primary.blue { background: var(--blue-btn); border-color: var(--blue-btn); }
+.btn.primary.blue:hover:not(:disabled) { background: var(--blue-btn-dim); }
+.btn.primary.blue:active:not(:disabled) { background: var(--blue-btn-dim); border-color: var(--blue-btn-dim); }
+.btn-group { display: inline-flex; gap: 2px; }
+
+/* Icons: Codicons (16-grid fill) and Feather glyphs (24-grid stroke) rendered
+   in currentColor (see ui/icons.js). Each svg carries its own display size; these
+   rules only handle layout + alignment. */
+.ico { flex: 0 0 auto; display: inline-block; vertical-align: -0.15em; }
+.btn .ico { display: block; }
+/* SVG-text glyphs (the IP / SP jump buttons): match the UI font of the labels. */
+.ico text { font-family: var(--font-ui); }
+.btn.icon-only { padding: 0; width: 28px; min-width: 28px; }
+
+/* Theme toggle. The button shows the mode you'll switch to: a sun while dark
+   (click for light), a moon while light (click for dark). The two Feather glyphs are
+   stacked and cross-fade with a small rotate/scale, keyed off <html data-theme>. */
+#btn-theme { position: relative; }
+#btn-theme .theme-ico {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transition: opacity 180ms ease, transform 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+[data-theme="dark"] #btn-theme .theme-sun { opacity: 1; transform: none; }
+[data-theme="dark"] #btn-theme .theme-moon { opacity: 0; transform: rotate(90deg) scale(0.4); }
+[data-theme="light"] #btn-theme .theme-sun { opacity: 0; transform: rotate(-90deg) scale(0.4); }
+[data-theme="light"] #btn-theme .theme-moon { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  #btn-theme .theme-ico { transition: opacity 120ms ease; }
+  [data-theme="dark"] #btn-theme .theme-moon,
+  [data-theme="light"] #btn-theme .theme-sun { transform: none; }
+}
+
+/* Checkboxes are drawn ourselves (appearance:none) so we control every state;
+   Chromium otherwise paints a disabled box a fixed washed-out grey and ignores
+   accent-color. The look follows Bootstrap's .form-check-input (rounded box,
+   centred tick, focus ring, pressed feedback) in our amber accent; a disabled box
+   (the share dialog's locked-on Memory / CPU) keeps the accent fill but is dimmed
+   with opacity, exactly like Bootstrap's :disabled, so it still reads "on". */
+input[type="checkbox"] {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25em;
+  background: transparent no-repeat center / contain;
+  cursor: pointer;
+  transition: background-color 0.1s, border-color 0.1s, box-shadow 0.1s;
+}
+input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  /* Dark tick: the --on-accent ink (#14171c) .btn.primary also draws on the accent,
+     so it stays legible on the bright amber fill (a white tick washed out in dark mode).
+     A literal, not var(): CSS variables can't reach inside a url() data URI, and an
+     unencoded '#' there reads as a URL fragment that truncates the SVG and hides the
+     tick; hence rgb(20,23,28) rather than #14171c. */
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='none' stroke='rgb(20,23,28)' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/></svg>");
+}
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+/* Pressed feedback (enabled only) so a click registers: a faint accent wash on an
+   empty box, a slight darken on a checked one. Covers clicks on the box itself and
+   on its wrapping label (the share dialog's .popover-row). */
+input[type="checkbox"]:not(:disabled):active,
+.popover-row:active input[type="checkbox"]:not(:disabled) {
+  border-color: var(--accent);
+  background-color: var(--accent-bg);
+}
+input[type="checkbox"]:checked:not(:disabled):active,
+.popover-row:active input[type="checkbox"]:checked:not(:disabled) {
+  background-color: var(--accent);
+  filter: brightness(0.88);
+}
+/* Disabled: the same accent box, dimmed by opacity (Bootstrap-style) so it still
+   reads "on" without the fixed grey Chromium would otherwise paint. */
+input[type="checkbox"]:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ---- Editor ------------------------------------------------------------ */
+/* [ .ed-rows (the scrolling listing) | .vbar ]. The native scrollbar on
+   .ed-rows is hidden; the custom VBar (right) is the visible control and spans
+   the whole mapped address range (see ui/editor.js). */
+.editor {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-3);
+  line-height: var(--lh-row);
+  cursor: text;
+}
+/* The column-header bar stacked over the body. The header spans the full width
+   (so its columns line up with the rows below); the VBar lives inside .ed-body
+   beside the rows, so its thumb tracks the listing, not the header strip. */
+.ed-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative; /* positioning context for the full-height column guides */
+}
+.ed-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+.ed-rows {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden; /* windowed: only the visible rows exist; wheel/VBar re-anchor */
+  position: relative; /* clip box; the rows live in the .ed-slide wrapper inside */
+}
+
+/* The Disassembly header + resize dividers are the shared .col-head / .col-guide
+   (see ui/cols.js + "Column header" below); .ed-main is their positioned host. */
+/* Inner wrapper holding the rows + jump-arrow overlay. .ed-rows stays put as the
+   clip; this is what translateY-slides for ~110ms on a wheel/arrow scroll. It is
+   the positioning context for the absolute .arrow-svg so the arrows ride along. */
+.ed-slide { position: relative; }
+
+/* Jump-arrow gutter overlay (scrolls with the rows). */
+.arrow-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+  /* Above .ed-row (z 2) so a row's hover / IP background never clips the arrow
+     that crosses it. The svg only spans the left gutter, so text is unaffected. */
+  z-index: 3;
+}
+.arrow {
+  fill: none;
+  stroke: var(--syn-mnem);
+  stroke-width: 1;
+  opacity: 0.75;
+  shape-rendering: crispEdges;
+}
+.arrow.active { stroke: var(--accent); opacity: 1; }
+/* Shares the --cols template with the header; ui/editor.js swaps the column set on
+   the split toggle (single Disassembly column vs. mnemonic | operands). */
+.ed-row {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: var(--lh-row);
+  white-space: pre;
+}
+/* Right-click menu target shares the hover rule, so the faint on-hover tint simply
+   "sticks" to the row the menu refers to until it closes (and, like hover, defers
+   to the .ip / .bp-row tints below). */
+.ed-row:hover,
+.ed-row.ctx-target { background: var(--bg-2); }
+/* While the menu is open (.ctx-open on the editor) the target row is the ONLY
+   highlight; a stray hover over a plain row no longer competes with it. IP /
+   breakpoint rows keep their own tint (excluded so this doesn't blank them). */
+.editor.ctx-open .ed-row:hover:not(.ctx-target):not(.ip):not(.bp-row) { background: transparent; }
+.ed-row.ip { background: var(--row-ip); }
+.ed-row.bp-row { background: var(--row-bp); }
+.ed-row.error .c-asm,
+.ed-row.error .c-mnem,
+.ed-row.error .c-ops { text-decoration: wavy underline var(--err); text-underline-offset: 3px; }
+
+/* Read-only rows past the editable code: the executable region's zero padding
+   and the disassembly of other mapped regions (data/stack). Decoded but muted,
+   non-editable, no hover/breakpoint affordance. */
+.ed-row.ro { cursor: default; }
+.ed-row.ro:hover { background: transparent; }
+.ed-row.ro .g-bp { cursor: default; }
+.ed-row.ro .g-bp:hover::after { opacity: 0; }
+.ed-row.ro .c-addr { color: var(--fg-dim); }
+.ed-row.ro .c-bytes,
+.ed-row.ro .c-asm,
+.ed-row.ro .c-mnem,
+.ed-row.ro .c-ops { color: var(--fg-mute); }
+/* Unmapped bytes (uc_err_read_unmapped): `??`, like the Memory/Stack views. */
+.ed-row.gap .c-bytes { color: var(--fg-dim); }
+
+.g-bp {
+  position: relative;
+  height: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* A set breakpoint is the icon("breakpoint...") SVG; the ::after disc is only the
+   faint "click here to add" hover preview, so it's suppressed once a real marker
+   is present. */
+.ed-row.bp-off .g-bp .ico { opacity: 0.4; } /* disabled breakpoint */
+.g-bp::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--err);
+  transform: translate(-50%, -50%);
+  opacity: 0;
+}
+.g-bp:hover::after { opacity: 0.4; }
+.ed-row.bp-row .g-bp::after { display: none; }
+
+/* Breakpoint marker glyph (gutter + Breakpoints panel). The SVG fills with
+   currentColor; the conditional variant's "+" is a transparent cut-out (so the
+   row shows through). Red here, not in the file, so it follows the theme. */
+.g-bp .ico, .bp-mark .ico { display: block; color: var(--err); }
+/* The amber IP / SP position marker; points right by default (Disassembly IP
+   gutter), flipped to point left in the Stack SP annotation (see .sp-mark). */
+.g-ip .ico, .sp-mark .ico { display: block; }
+
+/* IP marker: the amber pointer SVG, centred in the gutter and rendered by
+   ui/editor.js only on the current-IP row. */
+.g-ip { color: var(--accent); display: flex; align-items: center; justify-content: center; }
+/* The original entry point's permanent ring (circle-large): a quiet marker, not
+   the amber IP. When the IP rests on it the cell shows play-circle in accent instead. */
+.g-ip.entry { color: var(--fg-dim); }
+
+/* Address column: significant digits in the byte tint; leading zeros stay dim
+   via the .zero spans from dimZeros(). */
+/* Every data column carries the same --sp-2 inset on both sides as its header cell
+   (.col-head-bare .col), so text keeps 8px of padding from each resize divider and
+   the headers line up with the rows beneath them. */
+.c-addr { color: var(--fg-1); padding: 0 var(--sp-2); }
+.c-bytes { color: var(--fg-1); overflow: hidden; text-overflow: ellipsis; padding: 0 var(--sp-2); }
+.c-asm { color: var(--fg-0); padding: 0 var(--sp-2); overflow: hidden; }
+/* Split mode: mnemonic + operands columns. The wide asm cell (the row being
+   edited) spans both tracks so its inline <input> covers the whole asm area. */
+.c-mnem { color: var(--fg-0); padding: 0 var(--sp-2); overflow: hidden; white-space: pre; }
+.c-ops { color: var(--fg-0); padding: 0 var(--sp-2); overflow: hidden; }
+.editor.split .c-asm.wide { grid-column: span 2; }
+
+/* dim padding zeros: color, not opacity, real text (copy-safe) */
+.zero { color: var(--fg-dim); }
+
+/* syntax */
+.t-mnem { color: var(--syn-mnem); }
+.t-reg { color: var(--syn-reg); }
+.t-imm { color: var(--syn-imm); }
+.t-label { color: var(--syn-label); }
+.t-comment { color: var(--syn-comment); font-style: italic; }
+.t-punct { color: var(--syn-punct); }
+
+/* In-place edit fields: mono text on the hover surface, the accent ring as an
+   outline (zero layout cost) so opening one never nudges the neighbouring cells. */
+.ed-input,
+.inline-edit {
+  font-family: var(--font-mono);
+  color: var(--fg-0);
+  background: var(--bg-3);
+  border: none;
+  outline: 1px solid var(--accent);
+  margin: 0;
+}
+/* The full-width disassembly line editor, sized to its row. */
+.ed-input {
+  font-size: var(--fs-3);
+  line-height: var(--lh-row);
+  width: 100%;
+  height: var(--lh-row);
+  padding: 0;
+}
+/* Hugs the value it replaces (a register value, a memory byte) on a box shorter
+   than the row; the Registers/Memory views add the width + text-align to match. */
+.inline-edit {
+  font-size: var(--fs-2);
+  line-height: 16px;
+  height: 16px;
+  padding: 0 1px;
+  vertical-align: middle;
+}
+.reg-val .inline-edit { width: 100%; text-align: right; }
+.ed-empty {
+  color: var(--fg-dim);
+  padding: var(--sp-3);
+  font-family: var(--font-ui);
+}
+
+/* ---- Registers --------------------------------------------------------- */
+.reg-group { border-bottom: 1px solid var(--border); }
+/* Name-filter (toolbar): non-matching rows / empty sections drop out. Explicit
+   because .reg-row's `display: grid` would otherwise beat the UA [hidden] rule. */
+.reg-row[hidden],
+.reg-group[hidden] { display: none; }
+.reg-group > summary {
+  cursor: pointer;
+  padding: 4px var(--sp-2);
+  color: var(--fg-1);
+  user-select: none;
+  background: var(--bg-toolbar);
+}
+.reg-row {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  height: 20px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  padding: 0 var(--sp-2);
+  cursor: default;
+}
+.reg-row:hover { background: var(--bg-3); }
+.reg-name { color: var(--fg-1); }
+.reg-val { color: var(--fg-0); text-align: right; }
+.reg-row.changed .reg-val { color: var(--changed); }
+@keyframes flash {
+  from { background: var(--accent-bg); }
+  to { background: transparent; }
+}
+.reg-row.flash { animation: flash 0.6s ease-out; }
+
+/* Per-bit chips inside the collapsible Flags section, below its hex value row. */
+.flags-strip {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end; /* line the chips up on the right, under the reg values */
+  gap: 4px;
+  padding: 4px var(--sp-2) 6px;
+}
+.flag-chip {
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+/* .flag-chip.on lives with .map-perm.on below: one rule for both chip families. */
+
+/* ---- Inspector (hover type-preview) ----------------------------------- */
+.inspect {
+  padding: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+.inspect-grid {
+  display: grid;
+  grid-template-columns: 36px 1fr 1fr;
+  gap: 3px var(--sp-2);
+  align-items: baseline;
+}
+.inspect-grid .k { color: var(--fg-1); }
+.inspect-grid .v { color: var(--fg-0); text-align: right; word-break: break-all; }
+.inspect-grid .h { color: var(--fg-1); font-size: var(--fs-1); text-transform: uppercase; }
+.inspect-grid.raw { margin-top: var(--sp-2); }
+.inspect-hint { color: var(--fg-dim); font-family: var(--font-ui); padding: var(--sp-3); }
+.lane-table { margin-top: var(--sp-2); }
+
+/* ---- Expression fields + console ---------------------------------------- */
+/* Expression field in a panel toolbar (Memory / Stack / Inspector). Evaluates on
+   Enter: registers + integer literals + arithmetic + [deref] (see core/expr.js).
+   The Memory/Stack pin button makes the panel follow the result on every stop;
+   `.err` flags an expression that failed to evaluate. */
+.select.goto {
+  flex: 0 0 auto;
+  width: 19ch; /* a touch wider than the bare "0x"+8-hex value, so longer expressions fit */
+  height: 22px;
+  line-height: 20px; /* = content-box height, so the value sits vertically centered */
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-0);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: text; /* override the .select pointer cursor; this is an editable field */
+}
+/* The placeholder inherits the field's mono font (no UI-font override): two fonts
+   have different vertical metrics under the fixed line-height, which left the prose
+   placeholder sitting a hair high above the typed value. Same font, same baseline. */
+.select.goto::placeholder { color: var(--fg-dim); }
+/* Hover lift, matching the toolbar buttons (skipped while focused so the accent
+   ring below owns the field being edited). */
+.panel-toolbar .select.goto:hover:not(:focus) { background: var(--bg-3); border-color: var(--border-strong); }
+/* Focus ring in a dimmed accent; the full --accent amber reads too hot here. */
+.select.goto:focus { outline: none; border-color: var(--accent-dim); }
+.select.goto.err { border-color: var(--err); }
+.inspect-hint.err { color: var(--err); }
+
+.console {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  padding: var(--sp-2);
+  white-space: pre-wrap;
+}
+.console .line { padding: 1px 0; }
+.console .warning { color: var(--warn); }
+.console .error { color: var(--err); }
+.console .trace,
+.console .debug { color: var(--fg-dim); }
+/* Filter matches: underline the substring the query hit. */
+.console .match { text-decoration: underline; text-underline-offset: 2px; }
+
+/* memory + stack: a fixed grid of rows that fills the panel height, plus a
+   custom virtual scrollbar (.vbar) spanning the whole mapped address range. The
+   body itself doesn't scroll; the bar drives navigation (see ui/memory.js).
+   Lives inside the panel's .col-host, under the shared column header. */
+.hex {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+.hex-rows {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden; /* clip box; the rows live in the .hex-slide wrapper inside */
+  /* Only the top inset lives here; the left/right inset rides each row (below) so a
+     row highlight (the SP row) can span the full width instead of stopping at padding. */
+  padding: var(--sp-1) 0 0;
+}
+/* Inner wrapper holding the rows; translateY-slides for ~110ms on a scroll while
+   .hex-rows stays put as the clip (see ui/memory.js / ui/stack.js). */
+.hex-slide { position: relative; }
+/* Grid rows driven by the shared --cols (see ui/cols.js): Memory = Address | Bytes
+   | ASCII, Stack = Address | Value | annotations. Address/Bytes/Value are resizable
+   via the full-height .col-guide dividers, like the other table panels. Cell model
+   (matching the .col-head-cells header): all 8px insets live inside each cell, so a
+   divider always lands between two padded cells; a dragged-narrow column clips. */
+.hex-row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  white-space: pre;
+  align-items: center;
+  height: var(--lh-hex-row);
+}
+.hex-row > * {
+  padding: 0 var(--sp-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* The cap-trimmed text cells (see text-box-trim near the top) hug the glyphs
+   exactly, so the overflow clip above would shave cap tops and descenders;
+   symmetric vertical padding moves the clip edge off the glyphs without
+   shifting the optical center (same trick as .map-perm). */
+.hex-row .addr,
+.hex-row .ascii,
+.hex-row .mbytes,
+.hex-row > .mono {
+  padding-top: 5px; /* > font descent below the trimmed baseline (~4px at 12px) */
+  padding-bottom: 5px;
+}
+.hex-row .addr { color: var(--fg-1); } /* significant digits; leading zeros dimmed by .zero */
+.hex-row .ascii { color: var(--fg-1); }
+/* Stack annotations (SP marker + return-address hint) share the last column. */
+.hex-marks { display: flex; gap: var(--sp-2); align-items: center; min-width: 0; overflow: hidden; }
+/* genuinely unmapped bytes (safeRead): shown as ?? / ? rather than fake zeros */
+.hex .unmapped { color: var(--fg-dim); }
+
+/* Virtual scrollbar: extents = lowest..highest mapped address; the thumb shows
+   (and drags) the current window's position within that span. */
+.vbar {
+  flex: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  margin: 2px;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  overflow: hidden; /* clip the end-arrows' pressed fill to the bar's rounded corners */
+  user-select: none;
+  touch-action: none;
+}
+/* Seekable track between the two end-arrows; the thumb is positioned within it. */
+.vbar-track {
+  flex: 1 1 auto;
+  position: relative;
+  min-height: 0;
+  cursor: pointer;
+}
+/* End-arrows: one-row step on click, auto-repeat while held (see ui/vbar.js). */
+.vbar-arrow {
+  flex: 0 0 auto;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--fg-1);
+}
+.vbar-arrow:hover { color: var(--fg-0); }
+/* Pressed: the glyph goes to full fg + the button fills a step "whiter": bg-3 is a
+   lift over the bar's bg-2 in dark mode, and correspondingly a step darker in light
+   mode (both come free from the light-dark() tokens). Deliberately not the accent. */
+.vbar-arrow:active { color: var(--fg-0); background: var(--bg-3); }
+.vbar-arrow .ico { display: block; }
+.vbar-thumb {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  min-height: 16px;
+  border-radius: var(--radius);
+  background: var(--scroll-thumb);
+}
+.vbar-thumb:hover,
+.vbar.dragging .vbar-thumb {
+  background: var(--border-strong);
+  left: 0px;
+  right: 0px;
+}
+.hex .mb { cursor: text; padding: 0 1px; }
+.hex .mb:hover { background: var(--bg-3); border-radius: 2px; }
+/* Stack rows illuminate on hover like the register rows (double-click a value to
+   edit it); scoped to #stack so the Memory view keeps its per-byte hover instead. */
+#stack .hex-row:hover { background: var(--bg-3); }
+.hex-row.sp { background: var(--row-ip); }
+/* SP marker: the amber pointer SVG (flipped to point left) + the "sp" label, both
+   vertically centred by the flex so the glyph lines up with the row's mono digits. */
+.sp-mark { display: inline-flex; align-items: center; gap: 3px; color: var(--accent); }
+.sp-mark .ico { transform: scaleX(-1); }
+.ret-mark { color: var(--syn-label); }
+
+/* memory maps: a R/W/X permission table; double-click a chip to toggle. The
+   header is the shared .col-head (see "Column header" below); every row reads the
+   same --cols grid template so resizing a column reflows the whole table. */
+.map-table {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+}
+.map-row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  height: 22px;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+.map-row:hover { background: var(--bg-3); }
+.map-row.selected { background: var(--accent-bg); }
+/* 8px inside every cell (not a column gap), so a resized column keeps its text
+   padded off the divider; the size value no longer butts against the range. */
+.map-range { color: var(--fg-0); padding: 0 var(--sp-2); }
+.map-dash { color: var(--fg-dim); padding: 0 2px; }
+.map-size { color: var(--fg-1); text-align: right; padding: 0 var(--sp-2); }
+.map-label { color: var(--fg-dim); padding: 0 var(--sp-2); }
+.map-perms { display: inline-flex; gap: 3px; padding: 0 var(--sp-2); }
+.map-perm {
+  display: inline-block;
+  width: 17px;
+  padding: 4px 0; /* symmetric, so the cap-trimmed glyph centers, lining up with the hex text */
+  text-align: center;
+  text-box-trim: trim-both; /* cap-align the R/W/X glyph like the row's hex (see line ~52) */
+  text-box-edge: cap alphabetic;
+  font-size: var(--fs-1);
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+/* Neutral hover affordance: a disabled flag must NOT borrow the amber accent
+   outline (that reads as "enabled"); the toggle hint lives in the chip's title. */
+.map-perm:hover { background: var(--bg-3); }
+/* "on" (both chip families) reuses the SP-row treatment: the amber row tint behind
+   amber text, the border staying amber as the active outline; see .hex-row.sp. */
+.flag-chip.on,
+.map-perm.on { color: var(--accent); background: var(--row-ip); border-color: var(--accent); }
+
+/* ---- Breakpoints panel ------------------------------------------------- */
+/* Empty state: center the placeholder in the scroll area (both axes) instead of
+   the default top-left flow. Scoped to #breakpoints so the other listing panels
+   keep their top-aligned hints. */
+#breakpoints.empty .col-scroll {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#breakpoints.empty .inspect-hint { text-align: center; }
+.bp-item {
+  border-bottom: 1px solid var(--border);
+  padding: 2px var(--sp-2);
+}
+.bp-item.disabled .bp-addr,
+.bp-item.disabled .bp-text { color: var(--fg-dim); }
+.bp-item.disabled .bp-mark .ico { opacity: 0.4; }
+/* checkbox | marker | address | instruction | condition | pin | delete. The shared
+   .col-head header (see "Column header" below) reuses the same --cols grid
+   template, so the Address / Instruction labels sit exactly over their columns and
+   a resize reflows both at once. */
+.bp-head {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  gap: 0 var(--sp-2);
+  height: 24px;
+}
+.bp-mark { display: inline-flex; align-items: center; }
+.bp-addr {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  color: var(--fg-0);
+  white-space: nowrap;
+  padding-right: var(--sp-2); /* 8px off the Address|Instruction resize divider (left inset is the column gap) */
+}
+.bp-text {
+  font-family: var(--font-mono);
+  font-size: var(--fs-2);
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Condition affordance: the "+ condition" button shown until a condition exists
+   or its editor is opened, left-aligned under the Condition header. */
+.bp-cond-btn {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--sp-1);
+  cursor: pointer;
+}
+.bp-cond-btn:hover { color: var(--fg-0); border-color: var(--border-strong); background: var(--bg-2); }
+/* The row's quiet icon buttons: remove (✕) and stick/pin. */
+.bp-del,
+.bp-pin {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.bp-del:hover { color: var(--err); background: var(--bg-2); }
+/* Stick/pin toggle: muted while following the instruction, accent when pinned. */
+.bp-pin:hover { color: var(--fg-0); background: var(--bg-2); }
+.bp-pin.active { color: var(--accent); }
+/* Inline condition editor in the Condition column: an expression field welded to
+   an icon button (Bootstrap input-group: one shared border, only the outer corners
+   round). The icon applies a valid expression (check, accent) or clears an applied
+   one (cross, red on hover); see ui/breakpoints.js. */
+.bp-cond-group {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.bp-cond-group .bp-expr {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 22px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.bp-cond-group .bp-expr:focus { position: relative; z-index: 2; } /* accent ring over the welded button */
+.bp-cond-icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -1px; /* collapse the doubled 1px border into one shared edge */
+  color: var(--fg-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-top-right-radius: var(--radius-sm);
+  border-bottom-right-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.bp-cond-icon .ico { display: block; }
+.bp-cond-icon:hover:not(:disabled) { background: var(--bg-3); }
+.bp-cond-icon:disabled { opacity: 0.4; cursor: default; }
+.bp-cond-icon[data-mode="apply"]:not(:disabled) { color: var(--accent); }
+.bp-cond-icon[data-mode="clear"]:hover { color: var(--err); }
+
+/* ---- Column header (shared by every table/listing panel) --------------- */
+/* One header for all of them (see ui/cols.js): Disassembly, Memory, Stack,
+   Breakpoints, Memory Maps. The grid template lives in --cols on a host element;
+   this header and every data row read it, so dragging a boundary reflows the whole
+   table. Aligned with the rows by a matching side inset (--sp-2) + column gap. */
+.col-head {
+  display: grid;
+  grid-template-columns: var(--cols);
+  gap: 0 var(--sp-2);
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-ui);
+  color: var(--fg-1);
+  background: var(--bg-2); /* one step off the panel toolbar (--bg-1) so the header reads as distinct */
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+  flex: 0 0 auto;
+}
+/* Bare model (Disassembly): the gutters set the column origin, so the side inset
+   moves onto the cells (matching the .c-* rows, 8px each side) instead of the
+   container, and there's no column gap. */
+.col-head-bare { padding: 0; gap: 0; }
+.col-head-bare .col { padding: 0 var(--sp-2); }
+/* Cell model (Memory Maps): all 8px insets (outer edges and inter-column) live
+   inside each cell (matching the per-cell-padded .map-* rows), so a resize divider
+   always sits between two padded cells: 8px of text padding on both sides. */
+.col-head-cells { gap: 0; padding: 0; }
+.col-head-cells .col { padding: 0 var(--sp-2); }
+/* Mono model (Memory / Stack): the container keeps the monospace metrics so its
+   `ch`-based grid tracks line up with the byte rows below, but the visible labels
+   render in the UI font (.col-label) like every other header. */
+.col-head-mono { font-family: var(--font-mono); font-size: var(--fs-2); }
+.col-head .col {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+}
+.col-head .col-r { justify-content: flex-end; }
+/* Labels are UI-font (never monospace) at a slightly smaller size than the rows,
+   muted (fg-1) by default; the sortable (clickable) ones brighten to full white
+   only on hover. line-height:1 trims the leading so the text centres in the header
+   strip (like .lm-tab) instead of sitting a hair low. */
+.col-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  line-height: 1;
+}
+/* Sortable header cell: the WHOLE cell is the click target + affordance (not just the
+   label text); its label and active-sort caret brighten to full white on hover. */
+.col-head .col[data-sort] { cursor: pointer; }
+.col-head .col[data-sort]:hover .col-label,
+.col-head .col[data-sort]:hover .ico { color: var(--fg-0); }
+/* Sort direction caret (the chevron from ui/cols.js): a flex SIBLING of the label,
+   not a child, so toggling it never grows the label's line box and shifts the text.
+   Centred by the cell's align-items:center. Up = ascending, down = descending. */
+.col-label + .ico { margin-left: 2px; }
+
+/* Listing panels that scroll (Breakpoints / Memory Maps) take the same shape as the
+   Disassembly's .ed-main: a non-scrolling host holding the fixed header, a scrolling
+   rows area, and the full-height resize-divider overlay on top. */
+.col-host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.col-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+/* Empty list (e.g. no breakpoints): drop the full-height column dividers so they
+   don't strike through the centred placeholder text. Toggled by the panel views. */
+.col-host.empty .col-guides { display: none; }
+
+/* Full-height resize dividers (see ui/cols.js): a faint 1px line at each resizable
+   boundary, always visible as a separator hint and grabbable from any row, not just
+   the header. Positioned in JS by measuring the header cells, so they track the
+   columns exactly. */
+.col-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* only the thin handles below catch the pointer */
+  z-index: 4;
+}
+.col-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px; /* hit area; the visible line sits at its centre */
+  cursor: col-resize;
+  pointer-events: auto;
+}
+.col-guide::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 1px;
+  background: var(--border);
+}
+.col-guide:hover::after,
+.col-guide.dragging::after { background: var(--accent); }
+
+.toast-wrap {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.toast {
+  background: var(--bg-3);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: var(--fs-2);
+  box-shadow: var(--shadow-1);
+}
+.toast.err { border-left-color: var(--err); }
+
+/* ---- Popover (small anchored dialog, e.g. disassembly view options) ---- */
+.popover {
+  position: fixed;
+  z-index: 150;
+  min-width: 232px;
+  padding: var(--sp-2);
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-2);
+}
+.popover-title {
+  color: var(--fg-1);
+  margin: 2px 2px var(--sp-2);
+}
+.popover-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 2px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-0);
+  cursor: pointer;
+  user-select: none;
+}
+.popover-row:hover { background: var(--bg-2); }
+/* Fixed ✓ column (panels / arch/mode menus) so labels line up, checked or not. */
+.menu-check { flex: 0 0 14px; text-align: center; color: var(--accent); }
+/* A locked-on checkbox (Memory / CPU state, always shared) reads as fixed, not
+   interactive: the dimmed accent fill + not-allowed cursor come from the global
+   checkbox rule above; the row drops its hover affordance so it isn't clickable-looking. */
+.popover-row:has(input:disabled) { cursor: default; }
+.popover-row:has(input:disabled):hover { background: none; }
+
+/* Dropdown menus (header arch/mode / Examples, disassembly gear; see
+   menuButton in ui/dom.js): the button stays content-sized; the menu takes its
+   natural width. Repeated group titles get breathing room between groups. */
+.drop-menu { min-width: 140px; }
+.drop-menu .popover-title:not(:first-child) { margin-top: var(--sp-2); }
+
+/* Examples menu (header book button): search field over a scrolling list.
+   Fixed width; names that don't fit ellipsize instead of widening the menu. */
+.ex-menu { width: 260px; }
+.drop-menu .ex-search { width: 100%; margin-bottom: var(--sp-2); }
+.drop-menu .ex-list { max-height: 320px; overflow-y: auto; }
+.ex-list .popover-row {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Filtered-out rows: the display:block above would beat the UA [hidden] rule. */
+.ex-list .popover-row[hidden] { display: none; }
+
+/* Disassembly right-click menu: a compact popover at the cursor (one action). The
+   top-left corner is squared (the menu opens down-right of the click) so it visibly
+   anchors back to the point it was summoned from. */
+.ctx-menu { min-width: 0; padding: var(--sp-1); border-top-left-radius: 0; }
+.ctx-menu .popover-row { padding: var(--sp-1) var(--sp-2); white-space: nowrap; }
+
+/* ---- Share popover (header "Share" button) ----------------------------- */
+.share-pop { width: 380px; max-width: calc(100vw - 16px); }
+/* Caret pointing up at the share button: a single square rotated 45° whose two
+   upper edges carry the card's border while its lower half tucks behind the card
+   (so the join is seamless). translateX(-50%) centers it on --caret-x (the
+   button's center, tracked in place()) with no magic margins, even when the card
+   is clamped to the viewport edge. */
+.share-pop::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: var(--caret-x, 50%);
+  width: 10px;
+  height: 10px;
+  margin-bottom: -5px; /* sink the lower half behind the card so only the point shows */
+  transform: translateX(-50%) rotate(45deg);
+  background: var(--bg-1); /* same fill as the card */
+  border: 1px solid var(--border-strong);
+  border-right: none; /* leave only the two upper edges as the point's outline */
+  border-bottom: none;
+  pointer-events: none;
+}
+/* The link row: a read-only field welded to a copy button (one shared border,
+   only the outer corners round). */
+.share-url {
+  display: flex;
+  align-items: stretch;
+  margin: var(--sp-2) 2px 0;
+}
+.share-field {
+  flex: 1 1 auto;
+  min-width: 0; /* let the long URL scroll inside the field instead of widening the popover */
+  height: 28px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-1);
+  color: var(--fg-1);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  cursor: text;
+}
+.share-field:focus { outline: none; color: var(--fg-0); }
+.share-field::placeholder { color: var(--fg-dim); font-family: var(--font-ui); }
+.share-copy { flex: 0 0 auto; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.share-copy.ok { color: var(--ok); }
+.share-count {
+  margin: var(--sp-1) 2px var(--sp-2);
+  font-size: var(--fs-1);
+  color: var(--fg-dim);
+  text-align: right;
+}
+/* "What to include" checkboxes. */
+.share-opts { padding-top: var(--sp-1); }
+
+/* ---- About modal ------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--scrim);
+}
+.modal-overlay[hidden] { display: none; }
+.modal-card {
+  position: relative;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: var(--sp-4);
+  text-align: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-2);
+}
+.modal-close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  background: none;
+  border: none;
+  color: var(--fg-1);
+  cursor: pointer;
+}
+.modal-close:hover { color: var(--fg-0); }
+/* The brand mark (currentColor, like the header's .brand .logo), sized up. */
+.about-logo { color: var(--accent); }
+.about-logo .ico { display: block; margin: 0 auto; width: 48px; height: 48px; }
+.about-name { font-weight: 700; font-size: var(--fs-4); letter-spacing: 0.06em; margin-top: var(--sp-2); }
+.about-desc { color: var(--fg-1); font-size: var(--fs-2); margin: var(--sp-2) 0 var(--sp-3); }
+.about-link { color: var(--accent); font-size: var(--fs-2); text-decoration: none; }
+.about-link:hover { text-decoration: underline; }
+
+/* ---- Cookie-consent banner (ui/consent.js) ---- */
+.consent {
+  position: fixed;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+  z-index: 250;
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--sp-3);
+  font-size: var(--fs-2);
+  color: var(--fg-0);
+  background: var(--bg-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-1);
+}
+.consent p { flex: 1; margin: 0; color: var(--fg-1); }

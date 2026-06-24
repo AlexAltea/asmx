@@ -1,0 +1,39 @@
+{
+  "name": "asmx",
+  "type": "module",
+  "description": "Multi-architecture assembly execution playground for web browsers",
+  "author": "Alexandro Sanchez Bach <alexandro@phi.nz>",
+  "license": "GPL-2.0",
+  "keywords": [
+    "assembler",
+    "assembly",
+    "cpu",
+    "disassembler",
+    "emulation",
+    "emulator",
+    "reverse-engineering",
+    "sandbox"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AlexAltea/asmx.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AlexAltea/asmx/issues"
+  },
+  "scripts": {
+    "dev": "node build.mjs --dev",
+    "build": "node build.mjs",
+    "serve": "python3 -m http.server 8000",
+    "test": "node tests/main.js"
+  },
+  "dependencies": {
+    "@alexaltea/capstone-js": "5.0.9",
+    "@alexaltea/keystone-js": "0.9.2",
+    "@alexaltea/unicorn-js": "2.1.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  },
+  "private": true
+}
